@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/shopspring/decimal"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -58,17 +59,18 @@ var mintCmd = &cobra.Command{
 		if err != nil {
 			log.Panicln(errors.New("hex-content is required"))
 		}
+		hexContent = strings.TrimPrefix(hexContent, "0x")
 		textContent, err := cmd.Flags().GetString("text-content")
 		if err != nil {
 			log.Panicln(errors.New("text-content is required"))
 		}
-		log.Println("hex-content: ", hexContent)
-		log.Println("text-content: ", textContent)
 		if hexContent == "" && textContent == "" {
 			log.Panicln(errors.New("hex-content or text-content is required"))
 		}
 		useHexContent := hexContent != ""
-		log.Println("use hex content: ", useHexContent)
+		log.Println("hex-content: ", hexContent)
+		log.Println("text-content: ", textContent)
+
 		perAddressMinted, err := cmd.Flags().GetUint("per-address-minted")
 		if err != nil {
 			log.Panicln(errors.New("per-address-minted is required"))
@@ -104,7 +106,7 @@ var mintCmd = &cobra.Command{
 				if err != nil {
 					log.Panicln(err)
 				}
-				bufferedGasPrice := decimal.NewFromBigInt(gasPrice, 0).Mul(decimal.NewFromFloat32(1.1)).BigInt()
+				bufferedGasPrice := decimal.NewFromBigInt(gasPrice, 0).Mul(decimal.NewFromFloat32(1.01)).BigInt()
 
 				// 构造payload
 				var payload []byte
@@ -152,7 +154,7 @@ var mintCmd = &cobra.Command{
 				txHashString := txHash.Hex()
 
 				log.Println("Account index: ", i, " Address: ", accountAddress.Hex(), " Tx hash: ", txHashString, " Payload: ", string(payload))
-				time.Sleep(1 * time.Second)
+				time.Sleep(3 * time.Second)
 				nonce++
 			}
 		}
