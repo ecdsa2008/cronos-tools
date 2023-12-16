@@ -87,6 +87,8 @@ var mintCmd = &cobra.Command{
 			log.Panicln(err)
 		}
 		gasLimit := uint64(21944)
+
+	batchMint:
 		for i := startIndex; i <= endIndex; i++ {
 			// 获取当前账户的私钥
 			accountPrivateKey := utils.GetPrivateKey(mnemonic, i)
@@ -157,7 +159,9 @@ var mintCmd = &cobra.Command{
 				// 计算gas fee
 				gasFee := decimal.NewFromBigInt(bufferedGasPrice, 0).Mul(decimal.NewFromInt(int64(gasLimit))).BigInt()
 				if balance.Cmp(gasFee) < 0 {
-					log.Panicln(errors.New("account " + accountAddress.Hex() + " balance is not enough to pay for gas fee"))
+					log.Println("account " + accountAddress.Hex() + " balance is not enough to pay for gas fee")
+					log.Println("Switch to next account")
+					break
 				}
 
 				// 构造交易
@@ -186,6 +190,8 @@ var mintCmd = &cobra.Command{
 
 				time.Sleep(3 * time.Second)
 				localNonce++
+				retryTimes := 0
+				maxRetryTimes := 10
 				for {
 					remoteNonce, err := client.PendingNonceAt(context.Background(), accountAddress)
 					if err != nil {
@@ -194,12 +200,18 @@ var mintCmd = &cobra.Command{
 					if remoteNonce == localNonce {
 						break
 					} else {
-						time.Sleep(3 * time.Second)
+						time.Sleep(5 * time.Second)
+						retryTimes++
+						if retryTimes > maxRetryTimes {
+							log.Println("Can not get remote nonce after retry " + string(rune(maxRetryTimes)) + " times")
+							log.Println("Switch to next account")
+							continue batchMint
+						}
 					}
 				}
 			}
 		}
-
+		log.Println("Mint finished")
 	},
 }
 
