@@ -68,8 +68,6 @@ var mintCmd = &cobra.Command{
 			log.Panicln(errors.New("hex-content or text-content is required"))
 		}
 		useHexContent := hexContent != ""
-		log.Println("hex-content: ", hexContent)
-		log.Println("text-content: ", textContent)
 
 		perAddressMinted, err := cmd.Flags().GetUint("per-address-minted")
 		if err != nil {
@@ -88,26 +86,46 @@ var mintCmd = &cobra.Command{
 		if err != nil {
 			log.Panicln(err)
 		}
-		gasLimit := uint64(33916)
+		gasLimit := uint64(21944)
 		for i := startIndex; i <= endIndex; i++ {
 			// 获取当前账户的私钥
 			accountPrivateKey := utils.GetPrivateKey(mnemonic, i)
 			// 获取当前账户的地址
 			accountAddress := utils.GetAddressFromPrivateKey(accountPrivateKey)
 			// 获取当前账户的nonce
-			nonce, err := client.PendingNonceAt(context.Background(), accountAddress)
+			localNonce, err := client.PendingNonceAt(context.Background(), accountAddress)
 			if err != nil {
-				log.Panicln(err)
+				log.Println("Can not get nonce ", err)
+				// 如果获取nonce失败，则等待10秒后
+				for j := 0; j < 5; j++ {
+					time.Sleep(10 * time.Second)
+					localNonce, err = client.PendingNonceAt(context.Background(), accountAddress)
+					if err == nil {
+						continue
+					}
+				}
+				if err != nil {
+					log.Panicln("Can not get nonce after retry 5 times ", err)
+				}
 			}
-
 			for j := uint(0); j < perAddressMinted; j++ {
 				// 获取当前账户的gasPrice
 				gasPrice, err := client.SuggestGasPrice(context.Background())
 				if err != nil {
-					log.Panicln(err)
+					log.Println("Can not get gas price ", err)
+					// 如果获取gasPrice失败，则等待10秒后
+					for j := 0; j < 5; j++ {
+						time.Sleep(10 * time.Second)
+						gasPrice, err = client.SuggestGasPrice(context.Background())
+						if err == nil {
+							continue
+						}
+					}
+					if err != nil {
+						log.Panicln("Can not get gas price after retry 5 times ", err)
+					}
 				}
-				bufferedGasPrice := decimal.NewFromBigInt(gasPrice, 0).Mul(decimal.NewFromFloat32(1.01)).BigInt()
-
+				bufferedGasPrice := decimal.NewFromBigInt(gasPrice, 0).Mul(decimal.NewFromFloat32(1)).BigInt()
 				// 构造payload
 				var payload []byte
 				if useHexContent {
@@ -122,7 +140,18 @@ var mintCmd = &cobra.Command{
 				// 检查当前账户的native coin余额是否足够支付gas fee
 				balance, err := client.BalanceAt(context.Background(), accountAddress, nil)
 				if err != nil {
-					log.Panicln(err)
+					log.Println("Can not get balance ", err)
+					// 如果获取balance失败，则等待10秒后
+					for j := 0; j < 5; j++ {
+						time.Sleep(10 * time.Second)
+						balance, err = client.BalanceAt(context.Background(), accountAddress, nil)
+						if err == nil {
+							continue
+						}
+					}
+					if err != nil {
+						log.Panicln("Can not get balance after retry 5 times ", err)
+					}
 				}
 
 				// 计算gas fee
@@ -133,7 +162,7 @@ var mintCmd = &cobra.Command{
 
 				// 构造交易
 				tx := types.NewTx(&types.LegacyTx{
-					Nonce:    nonce,
+					Nonce:    localNonce,
 					To:       &accountAddress,
 					Value:    decimal.Zero.BigInt(),
 					Gas:      gasLimit,
@@ -154,8 +183,20 @@ var mintCmd = &cobra.Command{
 				txHashString := txHash.Hex()
 
 				log.Println("Account index: ", i, " Address: ", accountAddress.Hex(), " Tx hash: ", txHashString, " Payload: ", string(payload))
+
 				time.Sleep(3 * time.Second)
-				nonce++
+				localNonce++
+				for {
+					remoteNonce, err := client.PendingNonceAt(context.Background(), accountAddress)
+					if err != nil {
+						log.Panicln(err)
+					}
+					if remoteNonce == localNonce {
+						break
+					} else {
+						time.Sleep(3 * time.Second)
+					}
+				}
 			}
 		}
 
