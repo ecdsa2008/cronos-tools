@@ -86,7 +86,7 @@ var mintCmd = &cobra.Command{
 		if err != nil {
 			log.Panicln(err)
 		}
-		gasLimit := uint64(21944)
+		gasLimit := uint64(22000)
 
 	batchMint:
 		for i := startIndex; i <= endIndex; i++ {
@@ -116,7 +116,7 @@ var mintCmd = &cobra.Command{
 				if err != nil {
 					log.Println("Can not get gas price ", err)
 					// 如果获取gasPrice失败，则等待10秒后
-					for j := 0; j < 5; j++ {
+					for x := 0; x < 5; x++ {
 						time.Sleep(10 * time.Second)
 						gasPrice, err = client.SuggestGasPrice(context.Background())
 						if err == nil {
@@ -144,7 +144,7 @@ var mintCmd = &cobra.Command{
 				if err != nil {
 					log.Println("Can not get balance ", err)
 					// 如果获取balance失败，则等待10秒后
-					for j := 0; j < 5; j++ {
+					for y := 0; y < 5; y++ {
 						time.Sleep(10 * time.Second)
 						balance, err = client.BalanceAt(context.Background(), accountAddress, nil)
 						if err == nil {
@@ -159,11 +159,10 @@ var mintCmd = &cobra.Command{
 				// 计算gas fee
 				gasFee := decimal.NewFromBigInt(bufferedGasPrice, 0).Mul(decimal.NewFromInt(int64(gasLimit))).BigInt()
 				if balance.Cmp(gasFee) < 0 {
-					log.Println("account " + accountAddress.Hex() + " balance is not enough to pay for gas fee")
+					log.Println("Account " + accountAddress.Hex() + " balance is not enough to pay for gas fee")
 					log.Println("Switch to next account")
 					break
 				}
-
 				// 构造交易
 				tx := types.NewTx(&types.LegacyTx{
 					Nonce:    localNonce,
@@ -181,6 +180,16 @@ var mintCmd = &cobra.Command{
 				// 发送交易
 				err = client.SendTransaction(context.Background(), signedTx)
 				if err != nil {
+					if strings.Contains(err.Error(), "invalid sequence") {
+						j--
+						continue
+					}
+					if strings.Contains(err.Error(), "tx already in mempool") {
+						continue
+					}
+					if strings.Contains(err.Error(), "insufficient funds") {
+						continue batchMint
+					}
 					log.Panicln(err)
 				}
 				txHash := signedTx.Hash()
