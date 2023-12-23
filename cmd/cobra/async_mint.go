@@ -1,6 +1,3 @@
-/*
-Copyright © 2023 NAME HERE <EMAIL ADDRESS>
-*/
 package cobra
 
 import (
@@ -8,90 +5,81 @@ import (
 	"cronos-tools/src/utils"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	_ "github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/shopspring/decimal"
+	"github.com/spf13/cobra"
 	"log"
 	"strings"
 	"time"
-
-	"github.com/spf13/cobra"
 )
 
-// mintCmd represents the mint command
-var mintCmd = &cobra.Command{
-	Use:   "mint",
-	Short: "Auto mint inscriptions through mnemonic with multi bip-44 sequence addresses",
-	Long:  `Auto mint inscriptions through mnemonic with multi bip-44 sequence addresses, you must support enough native coin to pay for gas fee`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("mint called")
-		mnemonic, err := cmd.Flags().GetString("mnemonic")
-		if err != nil {
-			log.Panicln(errors.New("mnemonic is required"))
-		}
-		if mnemonic == "" {
-			log.Panicln(errors.New("mnemonic is required"))
-		}
-		rpc, err := cmd.Flags().GetString("rpc")
-		if err != nil {
-			log.Panicln(errors.New("rpc is required"))
-		}
-		if rpc == "" {
-			log.Panicln(errors.New("rpc is required"))
-		}
+func asyncMint(cmd *cobra.Command) {
+	mnemonic, err := cmd.Flags().GetString("mnemonic")
+	if err != nil {
+		log.Panicln(errors.New("mnemonic is required"))
+	}
+	if mnemonic == "" {
+		log.Panicln(errors.New("mnemonic is required"))
+	}
+	rpc, err := cmd.Flags().GetString("rpc")
+	if err != nil {
+		log.Panicln(errors.New("rpc is required"))
+	}
+	if rpc == "" {
+		log.Panicln(errors.New("rpc is required"))
+	}
 
-		startIndex, err := cmd.Flags().GetUint("start-index")
-		if err != nil {
-			log.Panicln(errors.New("start-index is required"))
-		}
-		endIndex, err := cmd.Flags().GetUint("end-index")
-		if err != nil {
-			log.Panicln(errors.New("end-index is required"))
-		}
+	startIndex, err := cmd.Flags().GetUint("start-index")
+	if err != nil {
+		log.Panicln(errors.New("start-index is required"))
+	}
+	endIndex, err := cmd.Flags().GetUint("end-index")
+	if err != nil {
+		log.Panicln(errors.New("end-index is required"))
+	}
 
-		if startIndex > endIndex {
-			log.Panicln(errors.New("start-index must less than or equal to end-index"))
-		}
+	if startIndex > endIndex {
+		log.Panicln(errors.New("start-index must less than or equal to end-index"))
+	}
 
-		hexContent, err := cmd.Flags().GetString("hex-content")
-		if err != nil {
-			log.Panicln(errors.New("hex-content is required"))
-		}
-		hexContent = strings.TrimPrefix(hexContent, "0x")
-		textContent, err := cmd.Flags().GetString("text-content")
-		if err != nil {
-			log.Panicln(errors.New("text-content is required"))
-		}
-		if hexContent == "" && textContent == "" {
-			log.Panicln(errors.New("hex-content or text-content is required"))
-		}
-		useHexContent := hexContent != ""
+	hexContent, err := cmd.Flags().GetString("hex-content")
+	if err != nil {
+		log.Panicln(errors.New("hex-content is required"))
+	}
+	hexContent = strings.TrimPrefix(hexContent, "0x")
+	textContent, err := cmd.Flags().GetString("text-content")
+	if err != nil {
+		log.Panicln(errors.New("text-content is required"))
+	}
+	if hexContent == "" && textContent == "" {
+		log.Panicln(errors.New("hex-content or text-content is required"))
+	}
+	useHexContent := hexContent != ""
 
-		perAddressMinted, err := cmd.Flags().GetUint("per-address-minted")
-		if err != nil {
-			log.Panicln(errors.New("per-address-minted is required"))
-		}
-		if perAddressMinted == 0 {
-			log.Panicln(errors.New("per-address-minted must bigger than 0"))
-		}
+	perAddressMinted, err := cmd.Flags().GetUint("per-address-minted")
+	if err != nil {
+		log.Panicln(errors.New("per-address-minted is required"))
+	}
+	if perAddressMinted == 0 {
+		log.Panicln(errors.New("per-address-minted must bigger than 0"))
+	}
 
-		client, err := ethclient.Dial(rpc)
-		if err != nil {
-			log.Panicln(err)
-		}
+	client, err := ethclient.Dial(rpc)
+	if err != nil {
+		log.Panicln(err)
+	}
 
-		networkID, err := client.NetworkID(context.Background())
-		if err != nil {
-			log.Panicln(err)
-		}
-		gasLimit := uint64(22000)
+	networkID, err := client.NetworkID(context.Background())
+	if err != nil {
+		log.Panicln(err)
+	}
+	gasLimit := uint64(22000)
 
-	batchMint:
-		for i := startIndex; i <= endIndex; i++ {
+	for i := startIndex; i <= endIndex; i++ {
+		go func(accountIndex uint) {
 			// 获取当前账户的私钥
-			accountPrivateKey := utils.GetPrivateKey(mnemonic, i)
+			accountPrivateKey := utils.GetPrivateKey(mnemonic, accountIndex)
 			// 获取当前账户的地址
 			accountAddress := utils.GetAddressFromPrivateKey(accountPrivateKey)
 			// 获取当前账户的nonce
@@ -142,13 +130,15 @@ var mintCmd = &cobra.Command{
 				// 检查当前账户的native coin余额是否足够支付gas fee
 				balance, err := client.BalanceAt(context.Background(), accountAddress, nil)
 				if err != nil {
-					log.Println("Can not get balance ", err)
+					log.Println("Can not get balance", err)
 					// 如果获取balance失败，则等待10秒后
 					for y := 0; y < 5; y++ {
+						log.Println("Retry get balance")
 						time.Sleep(10 * time.Second)
 						balance, err = client.BalanceAt(context.Background(), accountAddress, nil)
 						if err == nil {
-							continue
+							log.Println("Shutdown minting for account " + accountAddress.Hex() + ",Can not get balance after retry " + string(rune(y)) + " times")
+							return
 						}
 					}
 					if err != nil {
@@ -163,6 +153,7 @@ var mintCmd = &cobra.Command{
 					log.Println("Switch to next account")
 					break
 				}
+
 				// 构造交易
 				tx := types.NewTx(&types.LegacyTx{
 					Nonce:    localNonce,
@@ -172,6 +163,7 @@ var mintCmd = &cobra.Command{
 					GasPrice: bufferedGasPrice,
 					Data:     payload,
 				})
+
 				// 签名交易
 				signedTx, err := types.SignTx(tx, types.NewEIP155Signer(networkID), accountPrivateKey)
 				if err != nil {
@@ -186,19 +178,19 @@ var mintCmd = &cobra.Command{
 						continue
 					}
 					if strings.Contains(err.Error(), "tx already in mempool") {
-						log.Println("Account index: ", i, " Address: ", accountAddress.Hex(), " Tx already in mempool, continue retry")
 						continue
 					}
 					if strings.Contains(err.Error(), "insufficient funds") {
-						log.Println("Account index: ", i, " Address: ", accountAddress.Hex(), " Balance is not enough to pay for gas fee and switch to next account")
-						continue batchMint
+						log.Println("Account " + accountAddress.Hex() + " balance is not enough to pay for gas fee")
+						return
 					}
 					log.Panicln(err)
 				}
+
 				txHash := signedTx.Hash()
 				txHashString := txHash.Hex()
 
-				log.Println("Account index: ", i, " Address: ", accountAddress.Hex(), " Tx hash: ", txHashString, " Payload: ", string(payload))
+				log.Println("Account index: ", accountIndex, " Address: ", accountAddress.Hex(), " Tx hash: ", txHashString, " Payload: ", string(payload))
 
 				time.Sleep(3 * time.Second)
 				localNonce++
@@ -217,24 +209,12 @@ var mintCmd = &cobra.Command{
 						if retryTimes > maxRetryTimes {
 							log.Println("Can not get remote nonce after retry " + string(rune(maxRetryTimes)) + " times")
 							log.Println("Switch to next account")
-							continue batchMint
+							return
 						}
 					}
 				}
 			}
-		}
-		log.Println("Mint finished")
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(mintCmd)
-	mintCmd.Flags().StringP("mnemonic", "m", "", "Set mnemonic")
-	mintCmd.Flags().StringP("rpc", "r", "", "Set rpc")
-	mintCmd.Flags().StringP("hex-content", "", "", "Set inscriptions with hex content")
-	mintCmd.Flags().StringP("text-content", "", "", "Set inscriptions with text content")
-	mintCmd.Flags().UintP("per-address-minted", "p", 10, "Each address can mint how many inscriptions,default 10")
-	mintCmd.Flags().UintP("start-index", "s", 0, "Start index of bip-44 sequence addresses,default 0")
-	mintCmd.Flags().UintP("end-index", "e", 0, "End index of bip-44 sequence addresses,default 0")
-
+		}(i)
+	}
+	log.Println("Mint finished")
 }
