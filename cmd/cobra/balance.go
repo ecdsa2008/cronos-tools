@@ -54,22 +54,22 @@ var balanceCmd = &cobra.Command{
 			// 获取当前账户的地址
 			accountAddress := utils.GetAddressFromPrivateKey(accountPrivateKey)
 			// 获取当前账户的余额
-			ticksBalance, err := getInscriptionBalance(accountAddress)
+			ticksBalance, err := GetInscriptionBalance(accountAddress)
 			if err != nil {
 				log.Panicln("Error fetching inscription balance:", err)
 			}
-			if len(ticksBalance.Balances) == 0 {
+			if len(ticksBalance.Data) == 0 {
 				log.Println("Account index:", i, "Address:", accountAddress.Hex(), "No balance")
 				continue
 			}
 			if forAllTicks {
-				for _, balance := range ticksBalance.Balances {
+				for _, balance := range ticksBalance.Data {
 					totalInscriptions[balance.Tick] += balance.Amount
 					log.Printf("Account index: %d, Address: %s, Tick: %s, Amount: %d\n", i, accountAddress.Hex(), balance.Tick, balance.Amount)
 				}
 			} else {
 				hasBalance := false
-				for _, balance := range ticksBalance.Balances {
+				for _, balance := range ticksBalance.Data {
 					if balance.Tick == tick {
 						totalInscriptions[balance.Tick] += balance.Amount
 						hasBalance = true
@@ -96,7 +96,7 @@ func init() {
 // Get all ticks balance of an address
 // https://api.croscribe.com/balance/0xeb0c56a29e13F1594d794158c507f77bfd5B6eC8
 
-func getInscriptionBalance(address common.Address) (*TicksBalance, error) {
+func GetInscriptionBalance(address common.Address) (*TicksBalance, error) {
 	baseUrl := "https://api.croscribe.com/balance"
 	url := fmt.Sprintf("%s/%s", baseUrl, address.Hex())
 	resp, err := http.Get(url)
@@ -122,11 +122,13 @@ func getInscriptionBalance(address common.Address) (*TicksBalance, error) {
 }
 
 type TicksBalance struct {
-	Balances []struct {
-		TokenId  int    `json:"token_id"`
-		Chain    string `json:"chain"`
-		Protocol string `json:"protocol"`
-		Tick     string `json:"tick"`
-		Amount   int    `json:"amount"`
-	} `json:"balances"`
+	Data []TickBalanceInfo `json:"balances"`
+}
+
+type TickBalanceInfo struct {
+	TokenId  int    `json:"token_id"`
+	Chain    string `json:"chain"`
+	Protocol string `json:"protocol"`
+	Tick     string `json:"tick"`
+	Amount   int    `json:"amount"`
 }
